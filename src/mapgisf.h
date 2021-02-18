@@ -74,7 +74,7 @@ struct __attribute__ ((packed)) polygon_info {
     int num_lines;  // 线总数
     int off_line_info;  /* 线号存储位置，以线坐标点数据区 data_headers[1].data_offset 为起始点的偏移量, 在那里连续存储了 num_lines 个线号
                          * 每个线号是一个 4 字节整数，负线号表示该线的点序列要反过来 */
-    float color;  // 区（多边形）颜色，float 类型的大小为 4 字节
+    int color;  // 区（多边形）颜色，int 类型的大小为 4 字节
     unsigned short fill_pattern_index;  // 填充图案号
     float pattern_height;  // 图案高
     float pattern_width;  // 图案宽

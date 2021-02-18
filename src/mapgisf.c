@@ -17,6 +17,8 @@
 #include "cJSON.h"
 #include "mapgisf.h"
 
+#define MAPGIS_UTIL_DEBUG
+
 #ifdef MAPGIS_UTIL_DEBUG
 #define DEBUG_PRINT(...) fprintf(stderr, __VA_ARGS__)
 #else
@@ -129,7 +131,7 @@ print_polygon_info(struct polygon_info *pi, void *line_coords, size_t line_coord
 
     DEBUG_PRINT("polygon 信息\n");
     DEBUG_PRINT("============\n");
-    DEBUG_PRINT("flag=%d, 线总数=%d, 线号存储位置=%d, 颜色=%f, 填充图案号=%d, 图案高=%f, 图案宽=%f\n", pi->flag, pi->num_lines, pi->off_line_info, pi->color,
+    DEBUG_PRINT("flag=%d, 线总数=%d, 线号存储位置=%d, 颜色=%d, 填充图案号=%d, 图案高=%f, 图案宽=%f\n", pi->flag, pi->num_lines, pi->off_line_info, pi->color,
             pi->fill_pattern_index, pi->pattern_height, pi->pattern_width);
     DEBUG_PRINT("笔宽=%d, 图案颜色=%d, 透明输出=%d, 图层=%d, 线号1=%d, 线号2=%d\n", pi->pen_width, pi->pattern_color, pi->transparent_output, pi->layer,
             pi->line_index1, pi->line_index2);
