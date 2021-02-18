@@ -112,7 +112,7 @@ struct __attribute__ ((packed)) line_info {
 };
 
 /*
- * 各(至少线和多边形)属性区头部结构，它指明了有多少个属性，属性值区偏移量，属性值区头部大小等信息
+ * 各(至少线和多边形)属性区头部结构，它指明了有多少个属性，属性值区偏移量，属性块大小等信息
  */
 struct __attribute__ ((packed)) obj_attr_header {
     char unknown_char[12];  // 似乎是固定的 60 44 e1 07 0c 07 00 00  00 00 00 00
@@ -120,7 +120,7 @@ struct __attribute__ ((packed)) obj_attr_header {
     char unknown_char2[306];
     short num_attrs;  // 属性个数
     int unknown_int;
-    int header_size_attr_value;  // 属性表头部的大小
+    int attrs_size;  // 属性块大小，检查过几个，都比所有属性值占空间的和大1
     char unknown_char3[16];  // 全 0
     // 后面接着属性定义数组
 };
@@ -130,7 +130,7 @@ struct __attribute__ ((packed)) obj_attr_header {
  */
 struct __attribute__ ((packed)) obj_attr_define {
     char attr_name[20];  // 属性名，应该是包含一个结尾的 0 的
-    char type; // ATTR_STR 0, ATTR_INT 3, ATTR_INT2 4, ATTR_DOUBLE 5
+    char type; // ATTR_STR 0, ATTR_INT 3, ATTR_FLOAT 4, ATTR_DOUBLE 5
     int attr_off; // 该属性在一行属性组中的字节偏移量，似乎从1开始
     short size;  // 属性值占用空间大小
     short size2; // 对整数：位数，浮点数：小数点前位数，字符串：最大字符串长度（一般比size小1）
@@ -140,3 +140,15 @@ struct __attribute__ ((packed)) obj_attr_define {
     short unknown_short; // 似乎都是 00 00
 };
 
+#define ATTR_STR     0
+#define ATTR_INT     3
+#define ATTR_FLOAT   4
+#define ATTR_DOUBLE  5
+
+/*
+ * 属性定义 UTF-8 版本，用于实际使用
+ */
+struct __attribute__ ((packed)) obj_attr_define_utf8 {
+    char name_utf8[64];  // 属性名，UTF-8编码，原来最多9个汉字，也就是27个字节的UTF-8，所以肯定够用了
+    struct obj_attr_define o; // 原来的定义
+};
