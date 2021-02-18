@@ -17,6 +17,12 @@
 #include "cJSON.h"
 #include "mapgisf.h"
 
+#ifdef MAPGIS_UTIL_DEBUG
+#define DEBUG_PRINT(...) fprintf(stderr, __VA_ARGS__)
+#else
+#define DEBUG_PRINT(...)
+#endif
+
 int g_num_line = 0; // 总线数，主e要用于判断线号越界
 
 static void print_fh(struct file_header *fh);
@@ -32,86 +38,86 @@ print_fh(struct file_header *fh) {
     if (type_id < 0 || type_id > 2) {
         err(1, "Invalid file type %d", type_id);
     }
-    printf("文件头信息\n");
-    printf("==========\n");
-    printf("Type: %s\n", file_type_names[type_id]);
-    printf("data headers 偏移量: %d, guess_num_data_headers: %d\n", fh->off_data_headers, fh->guess_num_data_headers);
-    printf("线数: %d(%d), 点数: %d(%d), 多边形数: %d(%d)\n", fh->num_lines, fh->num_lines_pad, fh->num_points, fh->num_points_pad,
+    DEBUG_PRINT("文件头信息\n");
+    DEBUG_PRINT("==========\n");
+    DEBUG_PRINT("Type: %s\n", file_type_names[type_id]);
+    DEBUG_PRINT("data headers 偏移量: %d, guess_num_data_headers: %d\n", fh->off_data_headers, fh->guess_num_data_headers);
+    DEBUG_PRINT("线数: %d(%d), 点数: %d(%d), 多边形数: %d(%d)\n", fh->num_lines, fh->num_lines_pad, fh->num_points, fh->num_points_pad,
             fh->num_polygons, fh->num_polygons_pad);
-    printf("xmin: %f, ymin: %f, xmax: %f, ymax: %f\n", fh->xmin, fh->ymin, fh->xmax, fh->ymax);
-    printf("\n");
+    DEBUG_PRINT("xmin: %f, ymin: %f, xmax: %f, ymax: %f\n", fh->xmin, fh->ymin, fh->xmax, fh->ymax);
+    DEBUG_PRINT("\n");
 }
 
 static void
 print_dh(struct data_header *dh) {
-    printf("起始:%d:(0x%x):结束:%d:(0x%x):大小:%d(0x%x)\n", dh->data_offset, dh->data_offset,
+    DEBUG_PRINT("起始:%d:(0x%x):结束:%d:(0x%x):大小:%d(0x%x)\n", dh->data_offset, dh->data_offset,
             dh->data_offset + dh->data_len - 1, dh->data_offset + dh->data_len - 1, dh->data_len, dh->data_len);
 }
 
 static void
 print_dhs(int ft /* file type */, struct data_headers *dhs) {
-    printf("数据区头信息，相当于一个目录\n");
-    printf("============================\n");
+    DEBUG_PRINT("数据区头信息，相当于一个目录\n");
+    DEBUG_PRINT("============================\n");
     if (ft == MAPGIS_F_TYPE_POINT) {
-        printf("点信息(点文件的): ");
+        DEBUG_PRINT("点信息(点文件的): ");
     } else {
-        printf("线信息(面、线文件的): ");
+        DEBUG_PRINT("线信息(面、线文件的): ");
     }
     print_dh(&dhs->line_or_point_info);
 
     if (ft == MAPGIS_F_TYPE_POINT) {
-        printf("点字符串(点文件的): ");
+        DEBUG_PRINT("点字符串(点文件的): ");
     } else {
-        printf("线坐标点(面、线文件的): ");
+        DEBUG_PRINT("线坐标点(面、线文件的): ");
     }
     print_dh(&dhs->line_coords_or_point_string);
 
     if (ft == MAPGIS_F_TYPE_POINT) {
-        printf("点属性(点文件的): ");
+        DEBUG_PRINT("点属性(点文件的): ");
     } else {
-        printf("线属性(面、线文件的): ");
+        DEBUG_PRINT("线属性(面、线文件的): ");
     }
     print_dh(&dhs->line_or_point_attr);
 
-    printf("线拓扑关系: ");
+    DEBUG_PRINT("线拓扑关系: ");
     print_dh(&dhs->line_topo_relation);
 
-    printf("结点信息: ");
+    DEBUG_PRINT("结点信息: ");
     print_dh(&dhs->node_info);
 
-    printf("结点属性: ");
+    DEBUG_PRINT("结点属性: ");
     print_dh(&dhs->node_attr);
 
-    printf("unknown信息: ");
+    DEBUG_PRINT("unknown信息: ");
     print_dh(&dhs->unknown_info);
 
-    printf("unknown属性: ");
+    DEBUG_PRINT("unknown属性: ");
     print_dh(&dhs->unknown_attr);
 
-    printf("多边形信息: ");
+    DEBUG_PRINT("多边形信息: ");
     print_dh(&dhs->polygon_info);
 
-    printf("多边形属性: ");
+    DEBUG_PRINT("多边形属性: ");
     print_dh(&dhs->polygon_attr);
 
-    printf("pad属性: ");
+    DEBUG_PRINT("pad属性: ");
     print_dh(&dhs->pad);
 
-    printf("pad1属性: ");
+    DEBUG_PRINT("pad1属性: ");
     print_dh(&dhs->pad1);
 
-    printf("pad12属性: ");
+    DEBUG_PRINT("pad12属性: ");
     print_dh(&dhs->pad12);
 
-    printf("pad13属性: ");
+    DEBUG_PRINT("pad13属性: ");
     print_dh(&dhs->pad13);
 
-    printf("pad14属性: ");
+    DEBUG_PRINT("pad14属性: ");
     print_dh(&dhs->pad14);
 
-    printf("pad15属性: ");
+    DEBUG_PRINT("pad15属性: ");
     print_dh(&dhs->pad15);
-    printf("\n");
+    DEBUG_PRINT("\n");
 }
 
 /*
@@ -121,26 +127,26 @@ static void
 print_polygon_info(struct polygon_info *pi, void *line_coords, size_t line_coords_len) {
     int *line_num;  // 线号
 
-    printf("polygon 信息\n");
-    printf("============\n");
-    printf("flag=%d, 线总数=%d, 线号存储位置=%d, 颜色=%f, 填充图案号=%d, 图案高=%f, 图案宽=%f\n", pi->flag, pi->num_lines, pi->off_line_info, pi->color,
+    DEBUG_PRINT("polygon 信息\n");
+    DEBUG_PRINT("============\n");
+    DEBUG_PRINT("flag=%d, 线总数=%d, 线号存储位置=%d, 颜色=%f, 填充图案号=%d, 图案高=%f, 图案宽=%f\n", pi->flag, pi->num_lines, pi->off_line_info, pi->color,
             pi->fill_pattern_index, pi->pattern_height, pi->pattern_width);
-    printf("笔宽=%d, 图案颜色=%d, 透明输出=%d, 图层=%d, 线号1=%d, 线号2=%d\n", pi->pen_width, pi->pattern_color, pi->transparent_output, pi->layer,
+    DEBUG_PRINT("笔宽=%d, 图案颜色=%d, 透明输出=%d, 图层=%d, 线号1=%d, 线号2=%d\n", pi->pen_width, pi->pattern_color, pi->transparent_output, pi->layer,
             pi->line_index1, pi->line_index2);
     if (pi->off_line_info >= line_coords_len) {
         err(1, "线号信息超出范围");
     }
     line_num = (int *)(line_coords + pi->off_line_info);
     for (int i = 0; i < pi->num_lines; i++) {
-        printf("线号 %d: %d(0x%x)", i, *line_num, *line_num);
+        DEBUG_PRINT("线号 %d: %d(0x%x)", i, *line_num, *line_num);
         if (*line_num > g_num_line) {
-            printf(" 越界，最大 %d\n", g_num_line);
+            DEBUG_PRINT(" 越界，最大 %d\n", g_num_line);
         } else {
-            printf("\n");
+            DEBUG_PRINT("\n");
         }
         line_num++;
     }
-    printf("\n");
+    DEBUG_PRINT("\n");
 };
 
 /*
@@ -151,11 +157,11 @@ print_polygon_infos(int n, struct polygon_info *pis, void *line_coords, size_t l
     struct polygon_info *pi = pis;
 
     for (int i = 0; i <= n; i++) {  // 故意这么写的，多了一次循环
-        printf("Polygon %d:\n", i);
+        DEBUG_PRINT("Polygon %d:\n", i);
         print_polygon_info(pi, line_coords, line_coords_len);
         pi++;
     }
-    printf("前面 line_coords=%p\n", line_coords);
+    DEBUG_PRINT("前面 line_coords=%p\n", line_coords);
 }
 
 /*
@@ -168,24 +174,24 @@ static void
 print_line_info(struct line_info *pi, void *line_coords, size_t line_coords_len) {
     double *pos;
 
-    printf("line 信息\n");
-    printf("============\n");
-    printf("int1=%d, int2=%d, 点数=%d, 点坐标存储位置=%d, int3=%d\n", pi->int1, pi->int2, pi->num_points, pi->off_points_coords, pi->int3);
-    printf("线型号=%d, 辅助线型号=%d, 覆盖方式=%d, 线颜色号=%d\n", pi->line_pattern, pi->aux_line_pattern, pi->cover_type, pi->color_index);
-    printf("线宽=%f, 线各类=%d, X系数=%f, Y系数=%f, 辅助色=%d\n", pi->line_width, pi->line_type, pi->x_factor, pi->y_factor, pi->aux_color);
-    printf("图层=%d, int4=%d, int5=%d\n", pi->layer, pi->int4, pi->int5);
+    DEBUG_PRINT("line 信息\n");
+    DEBUG_PRINT("============\n");
+    DEBUG_PRINT("int1=%d, int2=%d, 点数=%d, 点坐标存储位置=%d, int3=%d\n", pi->int1, pi->int2, pi->num_points, pi->off_points_coords, pi->int3);
+    DEBUG_PRINT("线型号=%d, 辅助线型号=%d, 覆盖方式=%d, 线颜色号=%d\n", pi->line_pattern, pi->aux_line_pattern, pi->cover_type, pi->color_index);
+    DEBUG_PRINT("线宽=%f, 线各类=%d, X系数=%f, Y系数=%f, 辅助色=%d\n", pi->line_width, pi->line_type, pi->x_factor, pi->y_factor, pi->aux_color);
+    DEBUG_PRINT("图层=%d, int4=%d, int5=%d\n", pi->layer, pi->int4, pi->int5);
     if (pi->off_points_coords >= line_coords_len) {
         err(1, "坐标信息地址超出范围");
     }
     pos = (double *)(line_coords + pi->off_points_coords);
-    printf("线的各点坐标: ");
+    DEBUG_PRINT("线的各点坐标: ");
     for (int i = 0; i < pi->num_points; i++) {
-        printf("[%f, ", *pos);
+        DEBUG_PRINT("[%f, ", *pos);
         pos++;
-        printf("%f], ", *pos);
+        DEBUG_PRINT("%f], ", *pos);
         pos++;
     }
-    printf("\n\n");
+    DEBUG_PRINT("\n\n");
 };
 
 /*
@@ -196,19 +202,99 @@ print_line_infos(int n, struct line_info *lis, void *line_coords, size_t line_co
     struct line_info *li = lis;
 
     for (int i = 0; i < n; i++) {  // 
-        printf("line %d:\n", i + 1);  // 它的 line 是从 1 开始编号的
+        DEBUG_PRINT("line %d:\n", i + 1);  // 它的 line 是从 1 开始编号的
         print_line_info(li, line_coords, line_coords_len);
         li++;
     }
 }
 
 /*
- * 打印属性区头部信息, 包括属性定义信息, 我们假设头部后面紧跟的属性定义是存在的
+ * 从原始属性定义生成UTF-8属性名的版本
+ *   - def    原定义
+ *   - defu   新结构，内存由调用者负责
+ *   - n      属性个数
+ *   - icv    iconv 上下文
+ * XXX 用了 iconv 上下文，也没有线程安全，没有安全性检查
+ */
+static void
+iconv_attr_def(struct obj_attr_define *def, struct obj_attr_define_utf8 *defu, int n, iconv_t icv) {
+    size_t inbufl, outbufl;
+    char *inbufp, *outbufp;
+
+    for (int i = 0; i < n; i++) {
+        inbufp = def->attr_name;
+        inbufl = strlen(def->attr_name);
+        outbufp = defu->name_utf8;
+        outbufl = sizeof(defu->name_utf8);
+        bzero(defu->name_utf8, sizeof(defu->name_utf8));
+        iconv(icv, NULL, NULL, NULL, NULL);
+        iconv(icv, &inbufp, &inbufl, &outbufp, &outbufl);
+        defu->o = *def;
+        def++;
+        defu++;
+    }
+}
+
+/*
+ * 为一个对象添加其属性值
+ *   - ps    GeoJSON 中对象的 properties
+ *   - def   各属性定义，UTF-8版
+ *   - ndef  属性个数
+ *   - attrv 该对象属性值起始点
+ *   - icv   iconv 上下文
+ * XXX 用了 iconv 上下文，也没有线程安全，没有安全性检查
+ */
+static void
+geojson_add_attrs(cJSON *ps, struct obj_attr_define_utf8 *def, int ndef, void *attrv, iconv_t icv) {
+    char utf8_str[512]; // 用于转换后的 UTF8 字符串
+    size_t inbufl, outbufl;  // iconv 用
+    char *inbufp, *outbufp;  // iconv 用
+    char *p = attrv + def->o.attr_off;
+    int *val_int;
+    double *val_double;
+    float *val_float;
+
+    for (int i = 0; i < ndef; i++) {  // 遍历所有属性
+        switch (def->o.type) {
+        case ATTR_STR:
+            iconv(icv, NULL, NULL, NULL, NULL);
+            bzero(utf8_str, sizeof(utf8_str));
+            inbufp = (char *)p;  // 其实多此一举
+            inbufl = strlen(inbufp);
+            outbufp = utf8_str;
+            outbufl = sizeof(utf8_str);
+            iconv(icv, &inbufp, &inbufl, &outbufp, &outbufl);
+            cJSON_AddStringToObject(ps, def->name_utf8, utf8_str);
+            break;
+        case ATTR_INT:
+            val_int = (int *)p;
+            cJSON_AddNumberToObject(ps, def->name_utf8, *val_int);
+            break;
+        case ATTR_FLOAT:
+            val_float = (float *)p;
+            cJSON_AddNumberToObject(ps, def->name_utf8, *val_float);
+            break;
+        case ATTR_DOUBLE:
+            val_double = (double *)p;
+            cJSON_AddNumberToObject(ps, def->name_utf8, *val_double);
+            break;
+        default:
+            DEBUG_PRINT("未知的属性类型 %d\n", def->o.type);
+        }
+
+        //p += def->o.size;
+        def++;
+        p = attrv + def->o.attr_off;
+    }
+}
+
+/*
+ * 打印属性区头部信息和属性定义信息, 我们假设头部后面紧跟的属性定义是存在的
  */
 static void
 print_attr_header(struct obj_attr_header *h) {
-    printf("属性值区偏移量: %d(0x%x)，属性数: %d, 属性值区头部大小：%d(0x%x)\n", h->off_attr_value, h->off_attr_value, h->num_attrs,
-            h->header_size_attr_value, h->header_size_attr_value);
+    DEBUG_PRINT("属性值区偏移量: %d(0x%x)，属性数: %d, 属性值区头部（估计存放属性缺省值）大小：%d(0x%x)\n", h->off_attr_value, h->off_attr_value, h->num_attrs,
+            h->attrs_size, h->attrs_size);
 
     struct obj_attr_define *def = (struct obj_attr_define *)((char *)h + sizeof(*h));
     char utf8_str[32]; // 用于转换后的 UTF8 字符串
@@ -216,7 +302,7 @@ print_attr_header(struct obj_attr_header *h) {
     char *inbufp, *outbufp;
     iconv_t icv = iconv_open("UTF-8", "GB18030");
     if (icv == (iconv_t)-1) {
-        printf("iconv 初始化失败");
+        DEBUG_PRINT("iconv 初始化失败");
     }
 
     for (int i = 0; i < h->num_attrs; i++) {
@@ -231,7 +317,7 @@ print_attr_header(struct obj_attr_header *h) {
         } else {
             strncpy(utf8_str, def->attr_name, 19);
         }
-        printf("属性名=%s, 属性类型=%d，占用空间=%d, 序号=%d\n", utf8_str, def->type, def->size, def->index);
+        DEBUG_PRINT("属性名=%s, 属性类型=%d，占用空间=%d, 序号=%d\n", utf8_str, def->type, def->size, def->index);
         def++;
     }
 }
@@ -305,13 +391,21 @@ gen_geojson(struct file_header *fh, struct line_info *lis, struct polygon_info *
     int num_total_lines = fh->num_lines;
     int num_total_polys = fh->num_polygons;
     struct polygon_info *pi = pis + 1;  // 真正的数据是从第二块开始的
-    char *str = NULL;
+    iconv_t icv = iconv_open("UTF-8", "GB18030");  // 用于属性名和属性值的编码，从GB2312到UTF-8，XXX 没 close
     cJSON *gj = cJSON_CreateObject();  // GeoJSON
     cJSON *fs = cJSON_CreateArray();  // features
 
     cJSON_AddStringToObject(gj, "type", "FeatureCollection");
     cJSON_AddStringToObject(gj, "name", "GeoJSON_test");
     cJSON_AddItemToObject(gj, "features", fs);
+
+    // 属性
+    // 先把属性名转成 UTF-8
+    struct obj_attr_header *ah = (struct obj_attr_header *)attr;
+    struct obj_attr_define *def = (struct obj_attr_define *)(attr + sizeof(*ah));
+    struct obj_attr_define_utf8 *defu = (struct obj_attr_define_utf8 *)malloc(sizeof(*defu) * ah->num_attrs);
+    iconv_attr_def(def, defu, ah->num_attrs, icv);  // 做 UTF-8 转换
+    char *attr_values = (char *)(attr + ah->off_attr_value + ah->attrs_size);
 
     for (int i = 0; i < num_total_polys; i++) {  // 遍历所有的多边形
         cJSON *f = cJSON_CreateObject();  // Feature
@@ -320,7 +414,7 @@ gen_geojson(struct file_header *fh, struct line_info *lis, struct polygon_info *
         cJSON *cs = cJSON_CreateArray();  // coordinates
         cJSON *ring = cJSON_CreateArray();  // 多边形环，这里先分配外环，后面遇到一个0再分配一个新的环，后面的环都是要从外环抠除的
 
-        cJSON_AddNumberToObject(ps, "ID", i + 1);  // 模拟一个假的属性，它的序号从1开始编号
+        geojson_add_attrs(ps, defu, ah->num_attrs, attr_values, icv);
 
         // 坐标
         // MapGIS 6 可能只有多边形，没有多多边形。多边形由一个闭合区（外环）及其中任意个洞（当然也是闭合区）构成
@@ -331,8 +425,8 @@ gen_geojson(struct file_header *fh, struct line_info *lis, struct polygon_info *
         int *line_num;  // 指向线号的指针
 
         line_num = (int *)(line_coords + pi->off_line_info) + 1;  // 第一个数应该是构成多边形的各线的总点数，+ 1 跳过
-        //printf("线号存储偏移量：%d\n", pi->off_line_info);
-        printf("构造多边形 %d\n", i + 1);
+        //DEBUG_PRINT("线号存储偏移量：%d\n", pi->off_line_info);
+        //DEBUG_PRINT("构造多边形 %d\n", i + 1);
         for (int j = 0; j < (num_lines - 1); j++) {  // 遍历该多边形所有的线（弧段）
             int reverse;  // 负的线号表示要逆过来
             int ln; // 非负线号
@@ -367,13 +461,15 @@ gen_geojson(struct file_header *fh, struct line_info *lis, struct polygon_info *
         cJSON_AddItemToObject(f, "geometry", gm);
 
         cJSON_AddItemToArray(fs, f);
+        attr_values += ah->attrs_size;
         pi++;
     }
 
-    str = cJSON_Print(gj);
-    printf("GeoJSON:\n%s\n", str);
+    char *str = cJSON_Print(gj);
+    printf("%s", str);
     free(str);
     cJSON_Delete(gj);
+    free(defu);
 }
 
 int
@@ -391,7 +487,7 @@ main(int argc, char **argv) {
     struct obj_attr_header *attr_header;
 
     if (argc < 2) {
-        printf("Usage: %s <file>\n", argv[0]);
+        DEBUG_PRINT("Usage: %s <file>\n", argv[0]);
         return 1;
     }
     int fd = open(argv[1], O_RDONLY);
@@ -459,11 +555,11 @@ main(int argc, char **argv) {
     //free(lis);
     free(pis);
 
-    //printf("float 的大小为：%ld\n", sizeof(float));
-    //printf("polygon_info 大小：%ld\n", sizeof(struct polygon_info));
-    //printf("line_info 大小：%ld\n", sizeof(struct line_info));
-    //printf("属性区头部大小：%ld(0x%lx)\n", sizeof(struct obj_attr_header), sizeof(struct obj_attr_header));
-    //printf("属性定义大小：%ld(0x%lx)\n", sizeof(struct obj_attr_define), sizeof(struct obj_attr_define));
+    //DEBUG_PRINT("float 的大小为：%ld\n", sizeof(float));
+    //DEBUG_PRINT("polygon_info 大小：%ld\n", sizeof(struct polygon_info));
+    //DEBUG_PRINT("line_info 大小：%ld\n", sizeof(struct line_info));
+    //DEBUG_PRINT("属性区头部大小：%ld(0x%lx)\n", sizeof(struct obj_attr_header), sizeof(struct obj_attr_header));
+    //DEBUG_PRINT("属性定义大小：%ld(0x%lx)\n", sizeof(struct obj_attr_define), sizeof(struct obj_attr_define));
     return 0;
 }
 
