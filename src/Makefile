@@ -8,7 +8,7 @@ O_FILES = $(C_FILES:.c=.o)
 all: mapgisf
 
 mapgisf: $(O_FILES)
-	gcc -g -o $@ $^
+	gcc -g -o $@ $^ -lm
 
 %.o: %.c $(H_FILES)
 	gcc -g -c $<

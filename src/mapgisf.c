@@ -1,9 +1,9 @@
 /*
  * MapGIS 6.7 file utility
- *
+ * 目前是将 .WP 文件转成 GeoJSON 文件
  */
 
-#include <stdio.h>
+#include <stdio.h>  // printf()
 #include <sys/types.h>  // open()
 #include <sys/stat.h>  // open()
 #include <fcntl.h>  // open()
@@ -13,6 +13,7 @@
 #include <iconv.h>  // iconv_open(), iconv()
 #include <string.h>  // strncpy()
 #include <strings.h>  // bzero()
+#include <math.h>  // round()
 
 #include "cJSON.h"
 #include "mapgisf.h"
@@ -27,6 +28,7 @@
 
 int g_num_line = 0; // 总线数，主e要用于判断线号越界
 
+// 还有一堆懒得写在这里了
 static void print_fh(struct file_header *fh);
 static void print_dh(struct data_header *dh);
 static void print_dhs(int file_type, struct data_headers *dhs);
@@ -381,15 +383,81 @@ make_cs_ring(cJSON *r) {
 }
 
 /*
+ * 把一个 MapGIS 的 KCMY 定义转成 RGB 表示
+ */
+static void
+kcmy_to_rgb(struct pcolor_def *k, struct color_rgb *rgb) {
+    unsigned char k0, c, m, y;  // 有效 KCMY 值
+    unsigned char small; // 用于比较时返回小的
+    double f;
+
+    if ((k->p == 0) && (k->q == 0)) {
+        k0 = k->k;
+        c = k->c;
+        m = k->m;
+        y = k->y;
+    } else {  // 有修正
+        if ((k->k == 0) && (k->c == 0)) {
+            k0 = 0;
+        } else { // k->k 与 k->c 中至少有一个非0的，先取其中
+            if (k->k * k->c == 0) { // 其中有一个0，那么我们要取大的
+                small = (k->k > k->c) ? k->k : k->c;
+            } else { // 两个都不是0，我们要取小的
+                small = (k->k > k->c) ? k->c : k->k;
+            }
+            if (k->p == 0) {  // p 为0，那只能用前面 k, c 之中非0小者
+                k0 = small;
+            } else {  // p 大于 0，取小者
+                k0 = (small < k->p) ? small : k->p;
+            }
+        }
+        // 计算 青 的有效值
+        f = round((k->c - k0) * 255.0 / ( 255.0 - k0));
+        if (f > 255.0) {
+            c = 255;
+        } else if (f < 0.0) {
+            c = 0;
+        } else {
+            c = f;
+        }
+        // 计算 品红 的有效值
+        f = (k->m + k->p + floor(k->q / 4.0) - k0) * 255.0 / (255.0 - k0);
+        if (f > 255.0) {
+            m = 255;
+        } else if (f < 0.0) {
+            m = 0;
+        } else {
+            m = f;
+        }
+        // 计算 黄 的有效值
+        f = (k->y + k->p + k->q - k0) * 255.0 / (255.0 - k0);
+        if (f > 255.0) {
+            y = 255;
+        } else if (f < 0.0) {
+            y = 0;
+        } else {
+            y = f;
+        }
+        //DEBUG_PRINT("修正后等效：%d, %d, %d, %d\n", k0, c, m, y);
+    }
+    rgb->r = (255 - c) * (255 - k0) / 255;
+    rgb->g = (255 - m) * (255 - k0) / 255;
+    rgb->b = (255 - y) * (255 - k0) / 255;
+}
+
+/*
  * 生成 GeoJSON 文件
  *   - fh 文件头部信息，从中得到总的线数，多边形数
  *   - lis 第一个区（[0]线信息），包含每条线的索引信息，它由几个点构成，点坐标数组在第二区的偏移量
  *   - pis 第九个区（[8]多边形信息），包含多边形信息：它由几条线构成，线号数组在第二区的偏移量
  *   - line_coords 第二区（[1]线坐标信息），包含各多边形的线号数组，各线的坐标数组
  *   - attr 属性区
+ *   - pcolor_table 从 Pcolor.lib 文件中读出来的颜色表
+ *   - pcolor_max 最大颜色号 + 1，目前没用它进行判断
  */
 static void
-gen_geojson(struct file_header *fh, struct line_info *lis, struct polygon_info *pis, void *line_coords, void *attr) {
+gen_geojson(const char *name, struct file_header *fh, struct line_info *lis, struct polygon_info *pis, void *line_coords, void *attr,
+        struct pcolor_def *pcolor_table, int pcolor_max) {
     int num_total_lines = fh->num_lines;
     int num_total_polys = fh->num_polygons;
     struct polygon_info *pi = pis + 1;  // 真正的数据是从第二块开始的
@@ -398,10 +466,18 @@ gen_geojson(struct file_header *fh, struct line_info *lis, struct polygon_info *
     cJSON *fs = cJSON_CreateArray();  // features
 
     cJSON_AddStringToObject(gj, "type", "FeatureCollection");
-    cJSON_AddStringToObject(gj, "name", "GeoJSON_test");
-    cJSON_AddItemToObject(gj, "features", fs);
+    cJSON_AddStringToObject(gj, "name", name);
+
+    // 老的一般采用 北京1954 坐标系，所以我们就缺省生成老版本的 GeoJSON 文件，带坐标系的
+    cJSON *crs = cJSON_CreateObject();
+    cJSON_AddStringToObject(crs, "type", "name");
+    cJSON *crs_prop = cJSON_CreateObject();  // crs 下的 properties 对象
+    cJSON_AddStringToObject(crs_prop, "name", "urn:ogc:def:crs:EPSG::4214");
+    cJSON_AddItemToObject(crs, "properties", crs_prop);
+    cJSON_AddItemToObject(gj, "crs", crs);
 
     // 属性
+    cJSON_AddItemToObject(gj, "features", fs);
     // 先把属性名转成 UTF-8
     struct obj_attr_header *ah = (struct obj_attr_header *)attr;
     struct obj_attr_define *def = (struct obj_attr_define *)(attr + sizeof(*ah));
@@ -416,7 +492,19 @@ gen_geojson(struct file_header *fh, struct line_info *lis, struct polygon_info *
         cJSON *cs = cJSON_CreateArray();  // coordinates
         cJSON *ring = cJSON_CreateArray();  // 多边形环，这里先分配外环，后面遇到一个0再分配一个新的环，后面的环都是要从外环抠除的
 
-        geojson_add_attrs(ps, defu, ah->num_attrs, attr_values, icv);
+        geojson_add_attrs(ps, defu, ah->num_attrs, attr_values, icv);  // 该多边形的属性
+
+        //cJSON_AddNumberToObject(ps, "FillIndex", pi->color);  // 多边形填充色号
+        char fillstr[32];  // 形如 [120, 220, 22, 255] 的字符串，表示填充色的 RGBA 值
+        struct color_rgb rgb;  // 转换后的 RGB 值
+        struct pcolor_def *pdef = pcolor_table + pi->color - 1;
+
+        kcmy_to_rgb(pdef, &rgb);  // 将 MapGIS 的 Pcolor.lib 文件中的 6 字节 KCMY 转换成 RGB 值 
+        snprintf(fillstr, sizeof(fillstr) - 1, "%d, %d, %d, 255", rgb.r, rgb.g, rgb.b);
+        DEBUG_PRINT("多边形 %d, 色号 %d, fileoff=0x%lx, KCMY=%d,%d,%d,%d,%d,%d RGBA=%s\n", i + 1, pi->color,
+                sizeof(struct pcolor_header) + (pi->color - 1) * sizeof(struct pcolor_def), pdef->k, pdef->c, pdef->m, pdef->y,
+                pdef->p, pdef->q, fillstr);
+        cJSON_AddStringToObject(ps, "FillRGB", fillstr);  // 适合于 QGIS 用来填充颜色
 
         // 坐标
         // MapGIS 6 可能只有多边形，没有多多边形。多边形由一个闭合区（外环）及其中任意个洞（当然也是闭合区）构成
@@ -479,6 +567,7 @@ main(int argc, char **argv) {
     ssize_t r;
     size_t len;
     off_t off;
+    char *file_name;
     struct file_header fh;
     struct data_headers dhs;
     struct polygon_info *pis;
@@ -492,7 +581,8 @@ main(int argc, char **argv) {
         DEBUG_PRINT("Usage: %s <file>\n", argv[0]);
         return 1;
     }
-    int fd = open(argv[1], O_RDONLY);
+    file_name = argv[1];
+    int fd = open(file_name, O_RDONLY);
     if (fd == -1) {
         err(1, "Open file %s failed", argv[1]);
     }
@@ -553,7 +643,26 @@ main(int argc, char **argv) {
     attr_header = (struct obj_attr_header *)attr;
     print_attr_header(attr_header);
 
-    gen_geojson(&fh, lis, pis, line_coords, attr);
+    struct pcolor_header pcolorh;
+    struct pcolor_def *pcolor_table;
+    unsigned short pcolor_max;  // 最大许可色号加 1
+    int fdc; // Pcolor.lib 文件句柄
+
+    fdc = open("Pcolor.lib", O_RDONLY);
+    if (fdc == -1) {
+        err(1, "打开色号定义文件 Pcolor.lib 失败");
+    }
+    r = read(fdc, &pcolorh, sizeof(pcolorh));
+    DEBUG_PRINT("读 Pcolor.lib 文件头 %ld 字节\n", r);
+    size_t pcolor_table_size = pcolorh.colors * sizeof(*pcolor_table);
+    pcolor_table = (struct pcolor_def *)malloc(pcolor_table_size);
+    r = read(fdc, pcolor_table, pcolor_table_size);
+    if (r != pcolor_table_size) {
+        err(1, "读色号定义文件 Pcolor.lib 失败");
+    }
+    DEBUG_PRINT("读 Pcolor.lib 文件中的 %d 个色标定义共 %ld 字节\n", pcolorh.colors, pcolor_table_size);
+
+    gen_geojson(file_name, &fh, lis, pis, line_coords, attr, pcolor_table, pcolorh.colors);
     //free(lis);
     free(pis);
 

@@ -152,3 +152,48 @@ struct __attribute__ ((packed)) obj_attr_define_utf8 {
     char name_utf8[64];  // 属性名，UTF-8编码，原来最多9个汉字，也就是27个字节的UTF-8，所以肯定够用了
     struct obj_attr_define o; // 原来的定义
 };
+
+/*
+ * RGB 颜色定义
+ */
+struct __attribute__ ((packed)) color_rgb {
+    unsigned char r; // 红
+    unsigned char g; // 绿
+    unsigned char b; // 蓝
+};
+
+/*
+ * KCMY 颜色定义
+ */
+struct __attribute__ ((packed)) color_def {
+    unsigned char k; // 黑色
+    unsigned char c; // 青色
+    unsigned char m; // 品红
+    unsigned char y; // 黄色
+};
+
+/*
+ * Pcolor.lib 文件中每个色号的定义，共32个字节，其中前4个字节是 KCMY 值，然后2字节修正，但后面26个字节用途未知
+ */
+struct __attribute__ ((packed)) pcolor_def {
+    unsigned char k; // 黑色
+    unsigned char c; // 青色
+    unsigned char m; // 品红
+    unsigned char y; // 黄色
+    unsigned char p;  // 修正
+    unsigned char q;  // 修正
+    char pad[26];  // 用途未知
+};
+
+/*
+ * Pcolor.lib 文件格式
+ * 头部结构 pcolor_header，然后每个色号32字节，结构为 pcolor_def
+ * 文件实际大小可能比从 pcolor_header.colors 计算出来的要大，估计是预先分配了一点空间
+ */
+struct __attribute__ ((packed)) pcolor_header {
+    char headstr[8];  // 特征字符串 "PCOLOR 3"
+    short colors;  // 最大色号 + 1，色号从1开始
+    short colors_z;  // 专色数量
+    struct color_def zs[36];  // 最多 36 个专色，专色是直接用 4 字节来定义，没像其它色标一样用了 32 个字节
+};
+
