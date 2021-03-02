@@ -29,7 +29,7 @@ const char *file_type_names[] = {
 
 #define MAPGIS_F_TYPE_LINE     0
 #define MAPGIS_F_TYPE_POINT    1
-#define MAPGIS_F_TYPE_POLYGON  1
+#define MAPGIS_F_TYPE_POLYGON  2
 
 /*
  * 由文件头中的 off_data_headers 指定的偏移量开始，是一个下列结构的数组
