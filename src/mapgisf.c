@@ -383,66 +383,98 @@ make_cs_ring(cJSON *r) {
 }
 
 /*
+ * 从 CMY 的某分量 x 中去除 k 分量
+ */
+static unsigned char
+remove_k(unsigned char k, unsigned char x) {
+    // 肯定不会出现溢出现象
+    return (unsigned char)round(255.0 - (255.0 - k) * (255.0 - x) / 255.0);
+}
+
+/*
+ * 把一个 KCMY 转成 K 为 0 的等价 CMY 表示
+ */
+static struct color_def kcmy_nok(struct color_def *k) {
+    struct color_def cmy;
+
+    if (k->k == 0) {  // 本来就没有 K 分量
+        return *k;
+    }
+    cmy.k = 0;
+    cmy.c = remove_k(k->k, k->c);
+    cmy.m = remove_k(k->k, k->m);
+    cmy.y = remove_k(k->k, k->y);
+
+    return cmy;
+}
+
+/*
+ * 把一个专色分量转成无黑选等价 CMY 表示
+ *   zs    专色定义
+ *   z     专色分量，0 - 255
+ */
+static struct color_def zs_nok(struct color_def *zs, unsigned char z) {
+    struct color_def cmy;
+
+    cmy.k = (unsigned char)round(zs->k * z / 255);
+    cmy.c = (unsigned char)round(zs->c * z / 255);
+    cmy.m = (unsigned char)round(zs->m * z / 255);
+    cmy.y = (unsigned char)round(zs->y * z / 255);
+
+    return kcmy_nok(&cmy);
+}
+
+/*
+ * 无黑 CMY 相加
+ */
+static struct color_def cmy_add(struct color_def *a, struct color_def *b) {
+    struct color_def r;
+    int i;
+
+    r.k = 0;  // 就不检查 a b 的 K 分量是否为 0 了
+    i = a->c + b->c;
+    r.c = i > 255 ? 255 : i;
+    i = a->m + b->m;
+    r.m = i > 255 ? 255 : i;
+    i = a->y + b->y;
+    r.y = i > 255 ? 255 : i;
+
+    return r;
+}
+
+/*
+ * 无黑 CMY 转成 RGB
+ */
+static struct color_rgb cmy_to_rgb(struct color_def *k) {
+    struct color_rgb r;
+
+    r.r = 255 - k->c;
+    r.g = 255 - k->m;
+    r.b = 255 - k->y;
+
+    return r;
+}
+
+/*
  * 把一个 MapGIS 的 KCMY 定义转成 RGB 表示
+ *   k     此色的 KCMY值 和 专色分量值
+ *   ch    Pcolor.lib 头部，有专色数量及定义
+ *   rgb   结果 RGB 值
  */
 static void
-kcmy_to_rgb(struct pcolor_def *k, struct color_rgb *rgb) {
-    unsigned char k0, c, m, y;  // 有效 KCMY 值
-    unsigned char small; // 用于比较时返回小的
-    double f;
+kcmy_to_rgb(struct pcolor_def *k, struct pcolor_header *ch, struct color_rgb *rgb) {
+    //unsigned char k0, c0, m0, y0;
+    struct color_def k0, zs;
 
-    if ((k->p == 0) && (k->q == 0)) {
-        k0 = k->k;
-        c = k->c;
-        m = k->m;
-        y = k->y;
-    } else {  // 有修正
-        if ((k->k == 0) && (k->c == 0)) {
-            k0 = 0;
-        } else { // k->k 与 k->c 中至少有一个非0的，先取其中
-            if (k->k * k->c == 0) { // 其中有一个0，那么我们要取大的
-                small = (k->k > k->c) ? k->k : k->c;
-            } else { // 两个都不是0，我们要取小的
-                small = (k->k > k->c) ? k->c : k->k;
-            }
-            if (k->p == 0) {  // p 为0，那只能用前面 k, c 之中非0小者
-                k0 = small;
-            } else {  // p 大于 0，取小者
-                k0 = (small < k->p) ? small : k->p;
-            }
-        }
-        // 计算 青 的有效值
-        f = round((k->c - k0) * 255.0 / ( 255.0 - k0));
-        if (f > 255.0) {
-            c = 255;
-        } else if (f < 0.0) {
-            c = 0;
-        } else {
-            c = f;
-        }
-        // 计算 品红 的有效值
-        f = (k->m + k->p + floor(k->q / 4.0) - k0) * 255.0 / (255.0 - k0);
-        if (f > 255.0) {
-            m = 255;
-        } else if (f < 0.0) {
-            m = 0;
-        } else {
-            m = f;
-        }
-        // 计算 黄 的有效值
-        f = (k->y + k->p + k->q - k0) * 255.0 / (255.0 - k0);
-        if (f > 255.0) {
-            y = 255;
-        } else if (f < 0.0) {
-            y = 0;
-        } else {
-            y = f;
-        }
-        //DEBUG_PRINT("修正后等效：%d, %d, %d, %d\n", k0, c, m, y);
+    // KCMY 去黑
+    k0 = kcmy_nok(&k->kcmy);
+
+    // 专色分量去黑并累加
+    for (int i = 0; i < ch->colors_zs; i++) {  // XXX 没检查合法性
+        zs = zs_nok(&ch->zs[i], k->zs[i]);  // 专色分量去黑
+        k0 = cmy_add(&k0, &zs);
     }
-    rgb->r = (255 - c) * (255 - k0) / 255;
-    rgb->g = (255 - m) * (255 - k0) / 255;
-    rgb->b = (255 - y) * (255 - k0) / 255;
+    *rgb = cmy_to_rgb(&k0);
 }
 
 /*
@@ -457,7 +489,7 @@ kcmy_to_rgb(struct pcolor_def *k, struct color_rgb *rgb) {
  */
 static void
 gen_geojson(const char *name, struct file_header *fh, struct line_info *lis, struct polygon_info *pis, void *line_coords, void *attr,
-        struct pcolor_def *pcolor_table, int pcolor_max) {
+        struct pcolor_header *pcolh, struct pcolor_def *pcolor_table, int pcolor_max) {
     int num_total_lines = fh->num_lines;
     int num_total_polys = fh->num_polygons;
     struct polygon_info *pi = pis + 1;  // 真正的数据是从第二块开始的
@@ -496,14 +528,14 @@ gen_geojson(const char *name, struct file_header *fh, struct line_info *lis, str
 
         //cJSON_AddNumberToObject(ps, "FillIndex", pi->color);  // 多边形填充色号
         char fillstr[32];  // 形如 [120, 220, 22, 255] 的字符串，表示填充色的 RGBA 值
-        struct color_rgb rgb;  // 转换后的 RGB 值
+        struct color_rgb rgb2;  // 转换后的 RGB 值
         struct pcolor_def *pdef = pcolor_table + pi->color - 1;
 
-        kcmy_to_rgb(pdef, &rgb);  // 将 MapGIS 的 Pcolor.lib 文件中的 6 字节 KCMY 转换成 RGB 值 
-        snprintf(fillstr, sizeof(fillstr) - 1, "%d, %d, %d, 255", rgb.r, rgb.g, rgb.b);
+        kcmy_to_rgb(pdef, pcolh, &rgb2);  // 将 MapGIS 的 4 字节 KCMY 和后续 专色分量 转成 RGB 值
+        snprintf(fillstr, sizeof(fillstr) - 1, "%d, %d, %d, 255", rgb2.r, rgb2.g, rgb2.b);
         DEBUG_PRINT("多边形 %d, 色号 %d, fileoff=0x%lx, KCMY=%d,%d,%d,%d,%d,%d RGBA=%s\n", i + 1, pi->color,
-                sizeof(struct pcolor_header) + (pi->color - 1) * sizeof(struct pcolor_def), pdef->k, pdef->c, pdef->m, pdef->y,
-                pdef->p, pdef->q, fillstr);
+                sizeof(struct pcolor_header) + (pi->color - 1) * sizeof(struct pcolor_def), pdef->kcmy.k, pdef->kcmy.c,
+                pdef->kcmy.m, pdef->kcmy.y, pdef->zs[0], pdef->zs[1], fillstr);
         cJSON_AddStringToObject(ps, "FillRGB", fillstr);  // 适合于 QGIS 用来填充颜色
 
         // 坐标
@@ -662,7 +694,7 @@ main(int argc, char **argv) {
     }
     DEBUG_PRINT("读 Pcolor.lib 文件中的 %d 个色标定义共 %ld 字节\n", pcolorh.colors, pcolor_table_size);
 
-    gen_geojson(file_name, &fh, lis, pis, line_coords, attr, pcolor_table, pcolorh.colors);
+    gen_geojson(file_name, &fh, lis, pis, line_coords, attr, &pcolorh, pcolor_table, pcolorh.colors);
     //free(lis);
     free(pis);
 

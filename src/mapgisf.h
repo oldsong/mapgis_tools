@@ -173,16 +173,12 @@ struct __attribute__ ((packed)) color_def {
 };
 
 /*
- * Pcolor.lib 文件中每个色号的定义，共32个字节，其中前4个字节是 KCMY 值，然后2字节修正，但后面26个字节用途未知
+ * Pcolor.lib 文件中每个色号的定义，共32个字节，其中前4个字节是 KCMY 值，然后28字节表示专色分量
+ * (当然，也许后面 28 个字节不会是表示专色的)
  */
 struct __attribute__ ((packed)) pcolor_def {
-    unsigned char k; // 黑色
-    unsigned char c; // 青色
-    unsigned char m; // 品红
-    unsigned char y; // 黄色
-    unsigned char p;  // 修正
-    unsigned char q;  // 修正
-    char pad[26];  // 用途未知
+    struct color_def kcmy;
+    unsigned char zs[28];  // 专色
 };
 
 /*
@@ -193,7 +189,8 @@ struct __attribute__ ((packed)) pcolor_def {
 struct __attribute__ ((packed)) pcolor_header {
     char headstr[8];  // 特征字符串 "PCOLOR 3"
     short colors;  // 最大色号 + 1，色号从1开始
-    short colors_z;  // 专色数量
-    struct color_def zs[36];  // 最多 36 个专色，专色是直接用 4 字节来定义，没像其它色标一样用了 32 个字节
+    short colors_zs;  // 专色数量
+    struct color_def zs[28];  // 最多只能有 28 个专色，因为每个色标最多表达 28 个，实际应用中专色应该只有几个，25万建造用了 2 个专色
+    char pad[32];  // 未知
 };
 
