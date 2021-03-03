@@ -347,6 +347,20 @@ poly_add_line(cJSON *cs, struct line_info *li, int reverse, void *line_coords) {
         pos = (double *)(line_coords + li->off_points_coords) + 2 * (num_p - 1);
         step = -2;
     }
+
+    int points = cJSON_GetArraySize(cs);  // 当前环总点数, 新开的环为0，否则正常至少是 2
+    if (points > 0) {  // 非空环
+        // 比较一下当前最后一点与我们要新加的第一点是否重合
+        cJSON *last = cJSON_GetArrayItem(cs, points - 1);
+        double x_last = (cJSON_GetArrayItem(last, 0))->valuedouble;
+        double y_last = (cJSON_GetArrayItem(last, 1))->valuedouble;
+
+        if (*pos == x_last && *(pos + 1) == y_last) { // 重合了，跳过第一点
+            num_p--;
+            pos += step;
+            DEBUG_PRINT("跳过弧段终点的重合\n");
+        }
+    }
     for (int i = 0; i < num_p; i++) {
         p = cJSON_CreateArray();
 
@@ -360,26 +374,45 @@ poly_add_line(cJSON *cs, struct line_info *li, int reverse, void *line_coords) {
     }
 }
 
+static double
+distance(double x1, double y1, double x2, double y2) {
+    return sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
+}
+
+double small_double = 0.000001;
 /*
  * Make Coordinates Ring
  * 使用坐标构成一个环，也就是保证最后一点与第一点相同
  */
 static void
 make_cs_ring(cJSON *r) {
+    int points = cJSON_GetArraySize(r);  // 总点数, 正常至少是 2
+
     // 检查是否成环，如没成环则要追加第一个点的坐标到最后以让它成环
     cJSON *first = cJSON_GetArrayItem(r, 0);
-    cJSON *last = cJSON_GetArrayItem(r, cJSON_GetArraySize(r) - 1);
+    cJSON *last = cJSON_GetArrayItem(r, points - 1);
     double x_first = (cJSON_GetArrayItem(first, 0))->valuedouble;
     double y_first = (cJSON_GetArrayItem(first, 1))->valuedouble;
     double x_last = (cJSON_GetArrayItem(last, 0))->valuedouble;
     double y_last = (cJSON_GetArrayItem(last, 1))->valuedouble;
 
     if (x_first != x_last || y_first != y_last) {
+        if (distance(x_first, y_first, x_last, y_last) < small_double) {
+            DEBUG_PRINT("首尾点非常接近: %.6f, %.6f : %.6f, %.6f\n", x_first, y_first, x_last, y_last);
+        }
         cJSON *p = cJSON_CreateArray();
         cJSON_AddItemToArray(p, cJSON_CreateNumber(x_first));
         cJSON_AddItemToArray(p, cJSON_CreateNumber(y_first));
         cJSON_AddItemToArray(r, p);
     }
+
+    // 检查一下最后两点之间距离
+    //cJSON *last2 = cJSON_GetArrayItem(r, points - 2);  // points 没改过，所以是倒数第2点
+    //double x_last2 = (cJSON_GetArrayItem(last2, 0))->valuedouble;
+    //double y_last2 = (cJSON_GetArrayItem(last2, 1))->valuedouble;
+    //if (distance(x_last2, y_last2, x_last, y_last) < small_double) {
+        //DEBUG_PRINT("最后两点非常接近\n");
+    //}
 }
 
 /*
@@ -570,7 +603,7 @@ gen_geojson(const char *name, struct file_header *fh, struct line_info *lis, str
                 reverse = 0;
             }
             li = lis + (ln - 1);  // 取线信息，线号是从 1 开始编号的
-            cJSON *hole_j = cJSON_CreateArray();
+            //cJSON *hole_j = cJSON_CreateArray();  // XXX 应该是垃圾代码
             poly_add_line(ring, li, reverse, line_coords);
             line_num++;
         }
